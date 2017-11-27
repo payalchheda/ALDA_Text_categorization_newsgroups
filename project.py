@@ -74,7 +74,7 @@ transformer = TfidfTransformer(sublinear_tf=True)
 x = transformer.fit_transform(data_count)
 
 ## First way of dimension reduction using Chi Square Test
-feature_size = 11000
+feature_size = 18000
 print("Extracting %d best features by a chi-squared test:" % feature_size)
 ch2 = SelectKBest(chi2, k=feature_size)
 X = ch2.fit_transform(x, dataset.target)
@@ -84,41 +84,11 @@ def trim(s):
     return s if len(s) <= 80 else s[:77] + "..."
 
 # Benchmark classifiers
-def benchmark(clf):
+def benchmark(clf, name):
     print('_' * 80)
     print(clf)
-    #t0 = time()
-    #clf.fit(new_x_train, y_train)
-    #train_time = time() - t0
-    #print("train time: %0.3fs" % train_time)
-
-    #t0 = time()
-    #pred = clf.predict(new_x_test)
-    #test_time = time() - t0
-    #print("test time:  %0.3fs" % test_time)
-
-    #score = metrics.accuracy_score(y_test, pred)
-    #print("accuracy:   %0.3f" % score)
-
-    #if hasattr(clf, 'coef_'):
-    #    print("dimensionality: %d" % clf.coef_.shape[1])
-    #    print("density: %f" % density(clf.coef_))
-
-        
-    #    print("top 10 keywords per class:")
-    #    for i, label in enumerate(target_names):
-    #        top10 = np.argsort(clf.coef_[i])[-10:]
-            #print(trim("%s: %s" % (label, " ".join(feature_names[top10]))))
-    #    print()
-
-    #print("classification report:")
-    #print(metrics.classification_report(y_test, pred, target_names=target_names))
-    #print("confusion matrix:")
-    #print(metrics.confusion_matrix(y_test, pred))
-
-    #print()
-    clf_descr = str(clf).split('(')[0]
-    #return clf_descr, score, train_time, test_time
+    clf_descr = str(name).split('(')[0]
+    
     t0 = time()
     y_pred = cross_val_predict(clf, X, dataset.target, cv=5)
     train_time = time() - t0
@@ -129,94 +99,87 @@ def benchmark(clf):
     print("confusion matrix:")
     print(metrics.confusion_matrix(dataset.target, y_pred))
 
-    score = metrics.accuracy_score(dataset.target, y_pred)
-    print("accuracy:   %0.3f" % score)
-    return clf_descr, score, train_time
+    accuracy = metrics.accuracy_score(dataset.target, y_pred)
+    scores = metrics.precision_recall_fscore_support(dataset.target, y_pred, average='macro')
+    precision = scores[0]
+    recall = scores[1]
+    fscore = scores[2]
+    print("\nAccuracy:   %0.3f" % accuracy)
+    print("\nPrecision: %0.3f" % precision)
+    print("\nRecall %0.3f" % recall)
+    print("\nF-measure: %0.3f" % fscore)
+
+    return clf_descr, accuracy, train_time, precision, recall, fscore
 
 results = []
-#for clf, name in (
-#        (RidgeClassifier(tol=1e-2, solver="lsqr"), "Ridge Classifier"),
-#        (Perceptron(n_iter=50), "Perceptron"),
-#        (PassiveAggressiveClassifier(n_iter=50), "Passive-Aggressive"),
-#        (KNeighborsClassifier(n_neighbors=10), "kNN"),
-#        (RandomForestClassifier(n_estimators=100), "Random forest")):
-#    print('=' * 80)
-#    print(name)
-#    results.append(benchmark(clf))
+# (RidgeClassifier(tol=1e-2, solver="lsqr"), "Ridge Classifier"),
 for clf, name in (
-        (RidgeClassifier(tol=1e-2, solver="lsqr"), "Ridge Classifier"),
-        (Perceptron(n_iter=50), "Perceptron"),
-        (KNeighborsClassifier(n_neighbors=10), "kNN"),
-        (RandomForestClassifier(n_estimators=100), "Random forest")):
+        (Perceptron(n_iter=50), "ANN Classifier"),
+        (KNeighborsClassifier(n_neighbors=10), "kNN Classifier"),
+        (RandomForestClassifier(n_estimators=100), "Random forest Classifier")):
     print('=' * 80)
     print(name)
-    results.append(benchmark(clf))
+    results.append(benchmark(clf, name))
 
 for penalty in ["l2", "l1"]:
     print('=' * 80)
     print("%s penalty" % penalty.upper())
     # Train Liblinear model
     results.append(benchmark(LinearSVC(penalty=penalty, dual=False,
-                                       tol=1e-3)))
-
-    # Train SGD model
-    #results.append(benchmark(SGDClassifier(alpha=.0001, n_iter=50,
-    #                                       penalty=penalty)))
-
-# Train SGD with Elastic Net penalty
-#print('=' * 80)
-#print("Elastic-Net penalty")
-#results.append(benchmark(SGDClassifier(alpha=.0001, n_iter=50,
-#                                       penalty="elasticnet")))
-
-# Train NearestCentroid without threshold
-#print('=' * 80)
-#print("NearestCentroid (aka Rocchio classifier)")
-#results.append(benchmark(NearestCentroid()))
+                                       tol=1e-3), "Linear SVM - " + penalty))
 
 # Train sparse Naive Bayes classifiers
 print('=' * 80)
 print("Naive Bayes")
-results.append(benchmark(MultinomialNB(alpha=.01)))
-#results.append(benchmark(BernoulliNB(alpha=.01)))
-
-#print('=' * 80)
-#print("LinearSVC with L1-based feature selection")
-# The smaller C, the stronger the regularization.
-# The more regularization, the more sparsity.
-results.append(benchmark(Pipeline([
-  ('feature_selection', SelectFromModel(LinearSVC(penalty="l1", dual=False,
-                                                  tol=1e-3))),
-  ('classification', LinearSVC(penalty="l2"))])))
+results.append(benchmark(MultinomialNB(alpha=.01), "Naive Bayes Classifier"))
 
 # make some plots
 
 indices = np.arange(len(results))
 
-results = [[x[i] for x in results] for i in range(3)]
+results = [[x[i] for x in results] for i in range(6)]
 
-#clf_names, score, training_time, test_time = results
-#training_time = np.array(training_time) / np.max(training_time)
-#test_time = np.array(test_time) / np.max(test_time)
+clf_names, accuracy, training_time, precision, recall, fscore = results
+training_time = np.array(training_time) / np.max(training_time)    
 
-clf_names, score, training_time = results
-training_time = np.array(training_time) / np.max(training_time)
+fig, ax = plt.subplots(figsize=(20,15))
 
-plt.figure(figsize=(12, 8))
-plt.title("Score")
-#plt.barh(indices, score, .2, label="score", color='navy')
-#plt.barh(indices + .3, training_time, .2, label="training time",
-#         color='c')
-#plt.barh(indices + .6, test_time, .2, label="test time", color='darkorange')
-plt.barh(indices, score, .2, label="score", color='navy')
-plt.barh(indices + .3, training_time, .2, label="training time", color='darkorange')
-plt.yticks(())
-plt.legend(loc='best')
-plt.subplots_adjust(left=.25)
-plt.subplots_adjust(top=.95)
-plt.subplots_adjust(bottom=.05)
+ax.set_title("Scores for Models")
+ax.set_xlabel("Models")
+ax.set_xticks(indices + 0.35)
+ax.set_xticklabels(clf_names)
+bar1 = ax.bar(indices, accuracy, 0.1, color='b', alpha=0.75, linewidth=0)
+bar2 = ax.bar(indices + 0.2, precision, 0.1, color='g', alpha=0.75, linewidth=0)
+bar3 = ax.bar(indices + 0.4, recall, 0.1, color='r', alpha=0.75, linewidth=0)
+bar4 = ax.bar(indices + 0.6, fscore, 0.1, color='k', alpha=0.75, linewidth=0)
 
-for i, c in zip(indices, clf_names):
-    plt.text(-.3, i, c)
+ax.legend((bar1[0], bar2[0], bar3[0], bar4[0]), ('Accuracy', 'Precision', 'Recall', 'F-Measure'), loc='center left', bbox_to_anchor=(1, 0.5))
+
+def autolabel(rects, ax):
+    # Get y-axis height to calculate label position from.
+    (y_bottom, y_top) = ax.get_ylim()
+    y_height = y_top - y_bottom
+
+    for rect in rects:
+        height = rect.get_height()
+
+        # Fraction of axis height taken up by this rectangle
+        p_height = (height / y_height)
+
+        if p_height > 0.95:
+            label_position = height - (y_height * 0.05)
+        else:
+            label_position = height + (y_height * 0.01)
+
+        
+        height = height * 100
+        ax.text(rect.get_x() + rect.get_width()/2, label_position,
+                '%.1f' % float(height),
+                ha='center', va='bottom',color='k',fontsize=12)
+
+autolabel(bar1, ax)
+autolabel(bar2, ax)
+autolabel(bar3, ax)
+autolabel(bar4, ax)
 
 plt.show()
